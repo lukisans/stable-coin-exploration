@@ -1,0 +1,16 @@
+{
+    "workbench.colorTheme": "Gruvbox Light Hard",
+    "workbench.iconTheme": "catppuccin-latte",
+    "workbench.sideBar.location": "right",
+    "git.autofetch": true,
+    "editor.formatOnSave": true,
+    "solidity.compileUsingRemoteVersion": "latest",
+    "solidity.enableLocalNodeCompiler": false,
+    "solidity.packageDefaultDependenciesContractsDirectory": "src",
+    "solidity.packageDefaultDependenciesDirectory": "lib",
+    "files.exclude": {
+        "**/out": true,
+        "**/cache": true,
+        "**/lib": true
+    }
+}
