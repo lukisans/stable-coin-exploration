@@ -1,9 +1,9 @@
 //SPDX-Lecense-Identifier: MIT
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {MockV3Aggregator} from "../test/mocks/MockV3Aggregator.sol";
-import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
+import {ERC20Mock} from "../test/mocks/ERC20Mock.sol";
 
 contract HelperConfig is Script {
     struct NetworkConfig {
