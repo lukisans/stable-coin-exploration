@@ -225,7 +225,7 @@ contract DSCEngine is ReentrancyGuard {
         return address(i_dsc);
     }
 
-    function getCollateralTokePrice(
+    function getCollateralTokenPrice(
         address token
     ) external view returns (address) {
         return s_priceFeeds[token];

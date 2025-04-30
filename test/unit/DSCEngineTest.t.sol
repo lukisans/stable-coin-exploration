@@ -16,7 +16,9 @@ contract DSCEngineTest is Test {
     HelperConfig config;
 
     address ethUsdPriceFeed;
+    address btcUsdPriceFeed;
     address weth;
+    address wbtc;
 
     address public USER = makeAddr("user");
     uint256 public constant AMOUNT_COLLATERAL = 10 ether;
@@ -25,7 +27,8 @@ contract DSCEngineTest is Test {
         deployer = new DeployDSC();
 
         (dscCoin, dscEngine, config) = deployer.run();
-        (ethUsdPriceFeed, , weth, , ) = config.activeNetworkConfig();
+        (ethUsdPriceFeed, btcUsdPriceFeed, weth, wbtc, ) = config
+            .activeNetworkConfig();
     }
 
     // Constructor
@@ -34,11 +37,49 @@ contract DSCEngineTest is Test {
     {
         // Do deploy DSCEngine with mismatched token and price feed array lengths
         // Expect revert with DSCEngine__TokenAndPriceFeedArraysLengthMismatch error
+        address[] memory tokenAddress = new address[](1);
+        tokenAddress[0] = weth;
+
+        address[] memory priceFeedAddresses = new address[](2);
+        priceFeedAddresses[0] = ethUsdPriceFeed;
+        priceFeedAddresses[1] = btcUsdPriceFeed;
+
+        // Expect to fail
+        vm.expectRevert(
+            DSCEngine.DSCEngine__TokenAndPriceFeedArraysLengthMismatch.selector
+        );
+        new DSCEngine(tokenAddress, priceFeedAddresses, address(dscCoin));
+
+        address[] memory tokenAddressSameLength = new address[](2);
+        tokenAddressSameLength[0] = weth;
+        tokenAddressSameLength[1] = wbtc;
+        new DSCEngine(
+            tokenAddressSameLength,
+            priceFeedAddresses,
+            address(dscCoin)
+        );
     }
 
     function test_ConstructorSetsTokenPriceFeedMappings() public {
         // Do deploy DSCEngine with valid token and price feed arrays
         // Expect token-price feed mappings and DSC address to be set correctly
+        address[] memory tokenAddress = new address[](2);
+        tokenAddress[0] = weth;
+        tokenAddress[1] = wbtc;
+
+        address[] memory priceFeedAddresses = new address[](2);
+        priceFeedAddresses[0] = ethUsdPriceFeed;
+        priceFeedAddresses[1] = btcUsdPriceFeed;
+
+        DSCEngine engine = new DSCEngine(
+            tokenAddress,
+            priceFeedAddresses,
+            address(dscCoin)
+        );
+
+        vm.assertEq(engine.getCollateralTokenPrice(weth), ethUsdPriceFeed);
+        vm.assertEq(engine.getCollateralTokenPrice(wbtc), btcUsdPriceFeed);
+        vm.assertEq(engine.getDsc(), address(dscCoin));
     }
 
     // depositCollateral
