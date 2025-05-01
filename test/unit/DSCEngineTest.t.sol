@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 
 import {DeployDSC} from "../../script/DeployDSC.s.sol";
 import {DecentralizedStableCoin} from "../../src/DecentralizedStableCoin.sol";
 import {DSCEngine} from "../../src/DSCEngine.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {ERC20Mock} from "../mocks/ERC20Mock.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20MockFailedTransfer} from "../mocks/ERC20MockFailed.sol";
+import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
 
 contract DSCEngineTest is Test {
     DeployDSC deployer;
@@ -61,67 +63,27 @@ contract DSCEngineTest is Test {
         );
     }
 
-    function test_ConstructorSetsTokenPriceFeedMappings() public {
+    function test_ConstructorSetsTokenPriceFeedMappings() public view {
         // Do deploy DSCEngine with valid token and price feed arrays
         // Expect token-price feed mappings and DSC address to be set correctly
-        address[] memory tokenAddress = new address[](2);
-        tokenAddress[0] = weth;
-        tokenAddress[1] = wbtc;
-
-        address[] memory priceFeedAddresses = new address[](2);
-        priceFeedAddresses[0] = ethUsdPriceFeed;
-        priceFeedAddresses[1] = btcUsdPriceFeed;
-
-        DSCEngine engine = new DSCEngine(
-            tokenAddress,
-            priceFeedAddresses,
-            address(dscCoin)
-        );
-
-        vm.assertEq(engine.getCollateralTokenPrice(weth), ethUsdPriceFeed);
-        vm.assertEq(engine.getCollateralTokenPrice(wbtc), btcUsdPriceFeed);
-        vm.assertEq(engine.getDsc(), address(dscCoin));
+        vm.assertEq(dscEngine.getCollateralTokenPrice(weth), ethUsdPriceFeed);
+        vm.assertEq(dscEngine.getCollateralTokenPrice(wbtc), btcUsdPriceFeed);
+        vm.assertEq(dscEngine.getDsc(), address(dscCoin));
     }
 
     // depositCollateral
     function test_DepositCollateralRevertsIfAmountIsZero() public {
         // Do deposit zero collateral amount
         // Expect revert with DSCEngine__NeedsMoreThanZero error
-        address[] memory tokenAddress = new address[](2);
-        tokenAddress[0] = weth;
-        tokenAddress[1] = wbtc;
-
-        address[] memory priceFeedAddresses = new address[](2);
-        priceFeedAddresses[0] = ethUsdPriceFeed;
-        priceFeedAddresses[1] = btcUsdPriceFeed;
-
-        DSCEngine engine = new DSCEngine(
-            tokenAddress,
-            priceFeedAddresses,
-            address(dscCoin)
-        );
-
         vm.expectRevert(DSCEngine.DSCEngine__NeedsMoreThanZero.selector);
-        engine.depositCollateral(weth, 0);
+        dscEngine.depositCollateral(weth, 0);
     }
 
     function test_DepositCollateralRevertsIfTokenNotAllowed() public {
         // Do deposit collateral with unallowed token
         // Expect revert with DSCEngine__TokenNotAllowed error
-        address[] memory tokenAddress = new address[](1);
-        tokenAddress[0] = wbtc;
-
-        address[] memory priceFeedAddresses = new address[](1);
-        priceFeedAddresses[0] = btcUsdPriceFeed;
-
-        DSCEngine engine = new DSCEngine(
-            tokenAddress,
-            priceFeedAddresses,
-            address(dscCoin)
-        );
-
         vm.expectRevert(DSCEngine.DSCEngine__TokenNotAllowed.selector);
-        engine.depositCollateral(weth, 1_000);
+        dscEngine.depositCollateral(weth, 1_000);
     }
 
     function test_DepositCollateralRevertsIfTransferFails() public {
@@ -196,37 +158,20 @@ contract DSCEngineTest is Test {
         // Do deposit valid collateral amount
         // Expect collateral deposited state updated and CollateralDeposited event emitted
         // Mock ERC20
-        ERC20Mock mockErc = new ERC20Mock("Mock ERC", "MERC", USER, 1000e8);
-        address[] memory tokenAddresses = new address[](1);
-        tokenAddresses[0] = address(mockErc);
-
-        address[] memory priceFeedAddresses = new address[](1);
-        priceFeedAddresses[0] = btcUsdPriceFeed;
-
-        DSCEngine engine = new DSCEngine(
-            tokenAddresses,
-            priceFeedAddresses,
-            address(dscCoin)
-        );
-
         uint256 depositAmount = 500e8;
 
         vm.startPrank(USER);
-        mockErc.approve(address(engine), depositAmount);
+        ERC20Mock(weth).approve(address(dscEngine), depositAmount);
 
         // Action 1: Deposit collateral and trigger emit
-        vm.expectEmit(true, true, false, true, address(engine));
-        emit DSCEngine.CollateralDeposited(
-            USER,
-            address(mockErc),
-            depositAmount
-        );
-        engine.depositCollateral(address(mockErc), depositAmount);
+        vm.expectEmit(true, true, false, true, address(dscEngine));
+        emit DSCEngine.CollateralDeposited(USER, address(weth), depositAmount);
+        dscEngine.depositCollateral(address(weth), depositAmount);
         vm.stopPrank();
 
-        uint256 userCollateral = engine.getAccountCollateralValue(USER);
-        uint256 depositAmountInUsd = engine.getUsdValue(
-            address(mockErc),
+        uint256 userCollateral = dscEngine.getAccountCollateralValue(USER);
+        uint256 depositAmountInUsd = dscEngine.getUsdValue(
+            address(weth),
             depositAmount
         );
         vm.assertEq(
@@ -240,16 +185,118 @@ contract DSCEngineTest is Test {
     function test_MintDscRevertsIfAmountIsZero() public {
         // Do mint zero DSC amount
         // Expect revert with DSCEngine__NeedsMoreThanZero error
+        vm.startPrank(USER);
+
+        vm.expectRevert(DSCEngine.DSCEngine__NeedsMoreThanZero.selector);
+        dscEngine.mintDsc(0);
+
+        vm.stopPrank();
     }
 
     function test_MintDscRevertsIfHealthFactorBroken() public {
-        // Do mint DSC exceeding health factor threshold
+        // Do mint some DSC amount but break health factor
         // Expect revert with DSCEngine__BreaksHealthFactor error
+        uint256 depositAmount = 500_000e8;
+        ERC20Mock mockErc = new ERC20Mock(
+            "WFLD",
+            "WFLD",
+            address(dscEngine),
+            1_000_000e8 // 1,000 tokens (assuming 8 decimals)
+        );
+        vm.startPrank(address(dscEngine));
+        ERC20Mock(mockErc).transfer(address(USER), depositAmount);
+        vm.stopPrank();
+
+        address[] memory tokenAddresses = new address[](1);
+        tokenAddresses[0] = address(mockErc);
+
+        address[] memory priceFeedAddresses = new address[](1);
+        priceFeedAddresses[0] = ethUsdPriceFeed;
+
+        DecentralizedStableCoin dsc = new DecentralizedStableCoin(
+            address(USER)
+        );
+        DSCEngine dscengine = new DSCEngine(
+            tokenAddresses,
+            priceFeedAddresses,
+            address(dsc)
+        );
+
+        vm.startPrank(USER);
+        dsc.transferOwnership(address(dscengine));
+        vm.stopPrank();
+
+        (, int256 price, , , ) = MockV3Aggregator(ethUsdPriceFeed)
+            .latestRoundData();
+        uint256 amountToMint = (depositAmount *
+            uint256(price) *
+            dscengine.getAdditionalFeedPrecision()) / dscengine.getPrecision();
+
+        vm.startPrank(USER);
+        ERC20Mock(mockErc).approve(address(dscengine), depositAmount);
+        dscengine.depositCollateral(address(mockErc), depositAmount);
+
+        uint256 expectedHF = dscengine.calculateHealtFactor(
+            amountToMint,
+            dscengine.getUsdValue(address(mockErc), depositAmount)
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DSCEngine.DSCEngine__BreaksHealthFactor.selector,
+                expectedHF
+            )
+        );
+        dscengine.mintDsc(amountToMint);
+
+        vm.stopPrank();
     }
 
     function test_MintDscSucceedsWithSufficientCollateral() public {
         // Do mint valid DSC amount with sufficient collateral
         // Expect DSC minted state updated and health factor maintained
+        uint256 depositAmount = 500_000e8;
+        ERC20Mock mockErc = new ERC20Mock(
+            "WFLD",
+            "WFLD",
+            address(dscEngine),
+            1_000_000e8 // 1,000 tokens (assuming 8 decimals)
+        );
+        vm.startPrank(address(dscEngine));
+        ERC20Mock(mockErc).transfer(address(USER), depositAmount);
+        vm.stopPrank();
+
+        address[] memory tokenAddresses = new address[](1);
+        tokenAddresses[0] = address(mockErc);
+
+        address[] memory priceFeedAddresses = new address[](1);
+        priceFeedAddresses[0] = ethUsdPriceFeed;
+
+        DecentralizedStableCoin dsc = new DecentralizedStableCoin(
+            address(USER)
+        );
+        DSCEngine dscengine = new DSCEngine(
+            tokenAddresses,
+            priceFeedAddresses,
+            address(dsc)
+        );
+
+        vm.startPrank(USER);
+        dsc.transferOwnership(address(dscengine));
+        vm.stopPrank();
+
+        (, int256 price, , , ) = MockV3Aggregator(ethUsdPriceFeed)
+            .latestRoundData();
+        uint256 amountToMint = (100e8 *
+            uint256(price) *
+            dscengine.getAdditionalFeedPrecision()) / dscengine.getPrecision();
+
+        vm.startPrank(USER);
+        ERC20Mock(mockErc).approve(address(dscengine), depositAmount);
+        dscengine.depositCollateral(address(mockErc), depositAmount);
+
+        dscengine.mintDsc(amountToMint);
+
+        vm.stopPrank();
     }
 
     // burnDsc

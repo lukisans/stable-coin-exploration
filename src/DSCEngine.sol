@@ -23,6 +23,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__TransferFailed();
     error DSCEngine__BreaksHealthFactor(uint256 healthFactor);
     error DSCEngine__HealthFactorNotImproved();
+    error DSCEngine__MintFailed();
 
     // false positive case, throw when check health factor when liquidate
     error DSCEngine__HealthFactorOk();
@@ -39,7 +40,7 @@ contract DSCEngine is ReentrancyGuard {
     uint256 private constant LIQUIDATION_TRESHOLD = 50; // 200% overcollateralized
     uint256 private constant LIQUIDATION_PRECISION = 100; // Precision
     uint256 private constant LIQUIDATION_BONUS = 10; // reward for securing protocol
-    uint256 private constant MIN_HEALTH_FACTOR = 1;
+    uint256 private constant MIN_HEALTH_FACTOR = 1e18;
 
     DecentralizedStableCoin private immutable i_dsc; // DSC token contract
 
@@ -62,8 +63,9 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     modifier isAllowedToken(address token) {
-        if (s_priceFeeds[token] == address(0))
+        if (s_priceFeeds[token] == address(0)) {
             revert DSCEngine__TokenNotAllowed();
+        }
         _;
     }
 
@@ -166,8 +168,9 @@ contract DSCEngine is ReentrancyGuard {
     ) external moreThanZero(debtToCover) nonReentrant {
         // check healthFactor
         uint256 startingUserHealthFactor = _healthFactor(user);
-        if (startingUserHealthFactor > MIN_HEALTH_FACTOR)
+        if (startingUserHealthFactor > MIN_HEALTH_FACTOR) {
             revert DSCEngine__HealthFactorOk();
+        }
 
         uint256 tokenAmountFromDebtCovered = getTokenAmountFromUsd(
             collateral,
@@ -188,8 +191,9 @@ contract DSCEngine is ReentrancyGuard {
         _burnDsc(debtToCover, user, msg.sender);
 
         uint256 endUserHealthFactor = _healthFactor(user);
-        if (endUserHealthFactor <= startingUserHealthFactor)
+        if (endUserHealthFactor <= startingUserHealthFactor) {
             revert DSCEngine__HealthFactorNotImproved();
+        }
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
@@ -229,6 +233,13 @@ contract DSCEngine is ReentrancyGuard {
         address token
     ) external view returns (address) {
         return s_priceFeeds[token];
+    }
+
+    function calculateHealtFactor(
+        uint256 totalDscToMint,
+        uint256 collateralValueInUsd
+    ) external pure returns (uint256) {
+        return _calculateHealthFactor(totalDscToMint, collateralValueInUsd);
     }
 
     // ════════════════════════════════════════ PUBLIC FUNCTIONS ════════════════════════════════════════
@@ -285,6 +296,9 @@ contract DSCEngine is ReentrancyGuard {
     ) public moreThanZero(amountDscToMint) nonReentrant {
         s_DSCMinted[msg.sender] += amountDscToMint;
         _revertIfHealthFactorIsBroken(msg.sender);
+
+        bool ok = i_dsc.mint(msg.sender, amountDscToMint);
+        if (!ok) revert DSCEngine__MintFailed();
     }
 
     /**
@@ -374,10 +388,10 @@ contract DSCEngine is ReentrancyGuard {
             uint256 totalDscMinted,
             uint256 collateralValueInUsd
         ) = _getAccountInformation(user);
-        return _calculateHealtFactor(totalDscMinted, collateralValueInUsd);
+        return _calculateHealthFactor(totalDscMinted, collateralValueInUsd);
     }
 
-    function _calculateHealtFactor(
+    function _calculateHealthFactor(
         uint256 totalDscMinted,
         uint256 collateralValueInUsd
     ) internal pure returns (uint256) {
