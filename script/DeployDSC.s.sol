@@ -7,16 +7,28 @@ import {DSCEngine} from "../src/DSCEngine.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 
 contract DeployDSC is Script {
-    error DeployDSC__InvalidAddress(address normal, address thrower, address txOrigin);
+    error DeployDSC__InvalidAddress(
+        address normal,
+        address thrower,
+        address txOrigin
+    );
 
     address[] public tokenAddresses;
     address[] public priceFeedAddresses;
 
-    function run() external returns (DecentralizedStableCoin, DSCEngine, HelperConfig) {
+    function run()
+        external
+        returns (DecentralizedStableCoin, DSCEngine, HelperConfig)
+    {
         HelperConfig config = new HelperConfig();
 
-        (address wethUsdPriceFeed, address wbtcUsdPriceFeed, address weth, address wbtc, uint256 deployerKey) =
-            config.activeNetworkConfig();
+        (
+            address wethUsdPriceFeed,
+            address wbtcUsdPriceFeed,
+            address weth,
+            address wbtc,
+            uint256 deployerKey
+        ) = config.activeNetworkConfig();
 
         address deployer = vm.rememberKey(deployerKey);
 
@@ -25,7 +37,11 @@ contract DeployDSC is Script {
 
         vm.startBroadcast(deployer);
         DecentralizedStableCoin dsc = new DecentralizedStableCoin(deployer);
-        DSCEngine engine = new DSCEngine(tokenAddresses, priceFeedAddresses, address(dsc));
+        DSCEngine engine = new DSCEngine(
+            tokenAddresses,
+            priceFeedAddresses,
+            address(dsc)
+        );
 
         dsc.transferOwnership(address(engine));
         vm.stopBroadcast();
