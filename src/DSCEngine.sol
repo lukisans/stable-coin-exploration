@@ -213,6 +213,10 @@ contract DSCEngine is ReentrancyGuard {
         return LIQUIDATION_TRESHOLD;
     }
 
+    function getTotalDscMinted(address user) external view returns (uint256) {
+        return s_DSCMinted[user];
+    }
+
     function getLiquidationPrecision() external pure returns (uint256) {
         return LIQUIDATION_PRECISION;
     }
